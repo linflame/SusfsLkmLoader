@@ -1,0 +1,6 @@
+id=SUSFS_LKM
+name=SUSFS LKM Loader
+version=1.0
+versionCode=1
+author=linflame & 酷安@只是不够强
+description=Auto load susfs kernel module on boot. Current version = v2.3.0-r18.3

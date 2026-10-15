@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>SUSFS LKM Loader</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #1a1d24;
+    --border: #2a2e39;
+    --text: #e6e8ee;
+    --dim: #9aa0ae;
+    --accent: #4f8cff;
+    --ok: #34c77b;
+    --warn: #e5b545;
+    --err: #e5614f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 16px; max-width: 640px; margin: 0 auto;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px; margin-bottom: 14px;
+  }
+  .grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: 14px; }
+  .grid dt { color: var(--dim); }
+  .grid dd { word-break: break-all; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: rgba(52,199,123,.15); color: var(--ok); }
+  .badge.err { background: rgba(229,97,79,.15); color: var(--err); }
+  .badge.dim { background: rgba(154,160,174,.15); color: var(--dim); }
+  .badge.new { background: rgba(229,181,69,.18); color: var(--warn); }
+  .sources { display: flex; gap: 10px; margin-top: 6px; }
+  .src {
+    flex: 1; padding: 10px; border-radius: 10px; border: 1px solid var(--border);
+    background: transparent; color: var(--dim); font-size: 14px; text-align: center;
+    cursor: pointer; transition: all .15s;
+  }
+  .src.active { border-color: var(--accent); color: var(--accent); background: rgba(79,140,255,.10); font-weight: 600; }
+  .btns { display: flex; gap: 10px; }
+  button.act {
+    flex: 1; padding: 12px; border-radius: 10px; border: none; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: opacity .15s;
+  }
+  button.act:disabled { opacity: .45; cursor: not-allowed; }
+  #btnCheck { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  #btnUpdate { background: var(--accent); color: #fff; }
+  pre#log {
+    background: #0a0c10; border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+    line-height: 1.6; white-space: pre-wrap; word-break: break-all;
+    min-height: 60px; max-height: 320px; overflow-y: auto; color: var(--dim);
+  }
+  pre#log .ok { color: var(--ok); }
+  pre#log .err { color: var(--err); }
+  pre#log .info { color: var(--dim); }
+  .hint { color: var(--dim); font-size: 12px; margin-top: 8px; }
+  #status-line { font-size: 14px; margin-bottom: 10px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <h1>SUSFS LKM Loader</h1>
+  <div class="sub">内核模块在线更新 · 首选 Gitee 源</div>
+
+  <div class="card">
+    <dl class="grid">
+      <dt>模块版本</dt><dd id="d-version">…</dd>
+      <dt>susfs 版本</dt><dd id="d-susfs">…</dd>
+      <dt>内核变体</dt><dd id="d-kernel">…</dd>
+      <dt>模块状态</dt><dd id="d-loaded">…</dd>
+      <dt>上游最新</dt><dd id="d-latest"><span class="badge dim">未检查</span></dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <div style="color:var(--dim);font-size:13px;margin-bottom:6px;">更新源</div>
+    <div class="sources">
+      <div class="src" id="src-gitee" data-v="gitee">Gitee（国内推荐）</div>
+      <div class="src" id="src-github" data-v="github">GitHub</div>
+    </div>
+    <div class="hint">首选源查询/下载失败时会自动回退到另一个源。</div>
+  </div>
+
+  <div class="card">
+    <div class="btns">
+      <button class="act" id="btnCheck">检查更新</button>
+      <button class="act" id="btnUpdate" disabled>更新并热重载</button>
+    </div>
+    <div class="hint">更新会直接替换当前内核对应的 ko 与 susfs_insmod，并立即热重载；失败自动回滚。</div>
+  </div>
+
+  <div class="card">
+    <div id="status-line">就绪</div>
+    <pre id="log"></pre>
+  </div>
+
+<script>
+(function () {
+  var MODULE_DIRS = ['/data/adb/modules/SUSFS_LKM', '/data/adb/modules_update/SUSFS_LKM'];
+  var state = { version: '', susfs: '', kernel: '', loaded: 0, source: 'gitee', latest: '', checked: false };
+
+  function $(id) { return document.getElementById(id); }
+
+  function logLine(text, cls) {
+    var el = $('log');
+    var span = document.createElement('span');
+    span.textContent = text + '\n';
+    if (cls) span.className = cls;
+    el.appendChild(span);
+    el.scrollTop = el.scrollHeight;
+  }
+  function clearLog() { $('log').textContent = ''; }
+  function setStatus(t) { $('status-line').textContent = t; }
+
+  // KernelSU / SukiSU WebUI 注入的 ksu.exec；兼容 callback 与 Promise 两种形式
+  function exec(cmd) {
+    return new Promise(function (resolve, reject) {
+      if (!window.ksu || typeof window.ksu.exec !== 'function') {
+        reject(new Error('no-ksu'));
+        return;
+      }
+      var done = false;
+      var cbName = '__susfs_cb_' + Math.random().toString(36).slice(2);
+      window[cbName] = function (errno, stdout, stderr) {
+        if (done) return; done = true;
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+        resolve({ errno: errno, stdout: stdout || '', stderr: stderr || '' });
+      };
+      try {
+        var r = window.ksu.exec(cmd, '{}', cbName);
+        if (r && typeof r.then === 'function') {
+          r.then(function (v) {
+            if (done) return; done = true;
+            resolve(v);
+          }, reject);
+        }
+      } catch (e) { reject(e); }
+    });
+  }
+
+  function runWebui(sub, arg) {
+    var cmd0 = 'sh ' + MODULE_DIRS[0] + '/webui.sh ' + sub + (arg ? ' ' + arg : '');
+    return exec(cmd0).then(function (r) {
+      if (r.errno === 0 || r.stdout) return r;
+      // 模块待更新状态时目录在 modules_update
+      var cmd1 = 'sh ' + MODULE_DIRS[1] + '/webui.sh ' + sub + (arg ? ' ' + arg : '');
+      return exec(cmd1);
+    });
+  }
+
+  function parseKV(stdout) {
+    var out = {};
+    stdout.split('\n').forEach(function (line) {
+      var i = line.indexOf('=');
+      if (i > 0) out[line.slice(0, i)] = line.slice(i + 1).trim();
+    });
+    return out;
+  }
+
+  function render() {
+    $('d-version').textContent = state.version || '未知';
+    $('d-susfs').textContent = state.susfs || '未知';
+    $('d-kernel').textContent = state.kernel || '未知';
+    $('d-loaded').innerHTML = state.loaded
+      ? '<span class="badge ok">已加载</span>'
+      : '<span class="badge err">未加载</span>';
+    $('src-gitee').classList.toggle('active', state.source === 'gitee');
+    $('src-github').classList.toggle('active', state.source === 'github');
+
+    var latest = $('d-latest');
+    if (!state.checked) {
+      latest.innerHTML = '<span class="badge dim">未检查</span>';
+    } else if (!state.latest) {
+      latest.innerHTML = '<span class="badge err">查询失败</span>';
+    } else if (state.latest === state.susfs) {
+      latest.innerHTML = '<span class="badge ok">' + state.latest + '（已是最新）</span>';
+    } else {
+      latest.innerHTML = '<span class="badge new">' + state.latest + '（有更新）</span>';
+    }
+    $('btnUpdate').disabled = !(state.checked && state.latest && state.latest !== state.susfs);
+  }
+
+  function refreshInfo() {
+    setStatus('读取模块信息…');
+    return runWebui('info').then(function (r) {
+      var kv = parseKV(r.stdout);
+      state.version = kv.VERSION || '';
+      state.susfs = kv.SUSFS || kv.VERSION || '';
+      state.kernel = kv.KERNEL || '';
+      state.loaded = kv.LOADED === '1' ? 1 : 0;
+      if (kv.SOURCE === 'gitee' || kv.SOURCE === 'github') state.source = kv.SOURCE;
+      setStatus('就绪');
+      render();
+    }).catch(function (e) {
+      setStatus('无法读取模块信息');
+      logLine('ERROR: ' + (e && e.message === 'no-ksu'
+        ? '未检测到 WebUI 执行环境，请在 KernelSU / SukiSU 等支持 WebUI 的管理器中打开'
+        : String(e)), 'err');
+      render();
+    });
+  }
+
+  function selectSource(v) {
+    state.source = v;
+    state.checked = false; state.latest = '';
+    render();
+    runWebui('set_source', v).then(function (r) {
+      if (r.errno === 0) logLine('更新源已切换为 ' + v, 'info');
+    });
+  }
+
+  function checkUpdate() {
+    clearLog();
+    state.checked = false; state.latest = '';
+    render();
+    setStatus('正在从 ' + state.source + ' 查询…');
+    logLine('查询 ' + state.source + ' 最新 release…', 'info');
+    $('btnCheck').disabled = true;
+    return runWebui('check', state.source).then(function (r) {
+      var kv = parseKV(r.stdout);
+      state.checked = true;
+      if (kv.LATEST) {
+        state.latest = kv.LATEST;
+        if (state.latest === state.susfs) {
+          setStatus('uptodate');
+          logLine('uptodate：当前已是最新版本 ' + state.latest, 'ok');
+        } else {
+          setStatus('发现新版本 ' + state.latest);
+          logLine('发现新版本：' + state.susfs + ' -> ' + state.latest, 'ok');
+        }
+      } else {
+        setStatus('查询失败');
+        logLine(kv.ERROR || r.stderr || '查询失败', 'err');
+      }
+      render();
+      $('btnCheck').disabled = false;
+    }).catch(function (e) {
+      state.checked = true;
+      setStatus('查询失败');
+      logLine('ERROR: ' + String(e), 'err');
+      render();
+      $('btnCheck').disabled = false;
+    });
+  }
+
+  function doUpdate() {
+    clearLog();
+    setStatus('正在更新…');
+    $('btnCheck').disabled = true;
+    $('btnUpdate').disabled = true;
+    return runWebui('update', state.source).then(function (r) {
+      var lines = (r.stdout || '').split('\n');
+      var finalCls = r.errno === 0 ? 'ok' : 'err';
+      lines.forEach(function (line) {
+        if (!line) return;
+        var cls = 'info';
+        if (line.indexOf('OK=') === 0) { cls = 'ok'; line = line.slice(3); }
+        else if (line.indexOf('ERROR=') === 0) { cls = 'err'; line = line.slice(6); }
+        else if (line.indexOf('INFO=') === 0) { line = line.slice(5); }
+        else if (line === 'uptodate') { cls = 'ok'; line = 'uptodate：已是最新，无需更新'; }
+        logLine(line, cls);
+      });
+      if (r.stderr) logLine(r.stderr, 'err');
+      var kv = parseKV(r.stdout);
+      if (kv.OK) {
+        setStatus('更新完成');
+        // 重新读取版本号
+        return runWebui('info').then(function (ri) {
+          var k2 = parseKV(ri.stdout);
+          state.version = k2.VERSION || state.version;
+          state.susfs = k2.SUSFS || state.latest;
+          state.loaded = k2.LOADED === '1' ? 1 : 0;
+          state.latest = state.susfs;
+          state.checked = true;
+          render();
+        });
+      } else {
+        setStatus(r.errno === 0 ? '完成' : '更新失败');
+        render();
+      }
+    }).catch(function (e) {
+      setStatus('更新失败');
+      logLine('ERROR: ' + String(e), 'err');
+    }).then(function () {
+      $('btnCheck').disabled = false;
+      render();
+    });
+  }
+
+  $('src-gitee').addEventListener('click', function () { selectSource('gitee'); });
+  $('src-github').addEventListener('click', function () { selectSource('github'); });
+  $('btnCheck').addEventListener('click', checkUpdate);
+  $('btnUpdate').addEventListener('click', doUpdate);
+
+  if (!window.ksu || typeof window.ksu.exec !== 'function') {
+    setStatus('环境不支持');
+    logLine('未检测到 ksu.exec，请在 KernelSU / SukiSU 等支持 WebUI 的管理器中打开本页面。', 'err');
+  }
+  refreshInfo();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+name: nightly
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # legacy: 同步上游, 产物与 update.json 写入 modules/ (updateJson 指向仓库 raw 地址)
+      - name: Pack legacy
+        shell: pwsh
+        working-directory: legacy
+        env:
+          SUSFS_UPDATE_JSON_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/modules/update.json
+          SUSFS_ZIP_URL_BASE: https://github.com/${{ github.repository }}/releases/download/nightly/
+        run: ./pack.ps1
+
+      # next: 冻结版本, 仅打包本地内容
+      - name: Pack next
+        shell: pwsh
+        working-directory: next
+        run: ./pack.ps1
+
+      # modules/ (zip + update.json) 与 legacy/build/ (上游同步结果) 提交回仓库
+      # [skip ci] 防止本次提交再次触发工作流
+      - name: Commit modules
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add modules shared legacy next
+          git diff --cached --quiet || git commit -m "Update modules [skip ci]"
+          git push
+
+      # nightly release 只放两个模块 zip
+      - name: Upload nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly
+          files: modules/*.zip
