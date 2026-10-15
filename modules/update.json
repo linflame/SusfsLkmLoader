@@ -1,6 +1,6 @@
 {
-    "version":  "v2.3.0-r18.3",
-    "versionCode":  230183,
-    "zipUrl":  "https://github.com/linflame/SusfsLkmLoader/releases/download/nightly/SUSFS_LKM_legacy.zip",
-    "changelog":  "https://cdn.jsdelivr.net/gh/linflame/SusfsLkmLoader@main/modules/changelog.md"
+  "version": "v2.3.0-r18.3",
+  "versionCode": 230183,
+  "zipUrl": "https://github.com/linflame/SusfsLkmLoader/releases/download/nightly/SUSFS_LKM_legacy.zip",
+  "changelog": "https://cdn.jsdelivr.net/gh/linflame/SusfsLkmLoader@main/modules/changelog.md"
 }
