@@ -2,6 +2,7 @@
 
 开机自动加载 susfs 内核模块的 Root 模块，兼容 Magisk / KernelSU / APatch。
 ko / 加载器来源：[susfs4ksu-lkm](https://gitee.com/inforcqb/susfs4ksu-lkm)（[GitHub](https://github.com/inforcqb/susfs4ksu-lkm)）
+检测更新频率：每天检查
 
 ## 双线
 
@@ -24,9 +25,3 @@ ko / 加载器来源：[susfs4ksu-lkm](https://gitee.com/inforcqb/susfs4ksu-lkm)
 - 便于用户更新
 - 日志：`/data/adb/susfs_lkm.log`
 
-## 打包
-
-各线目录下运行 `pack.bat`，产物统一输出到 `modules/`：
-
-- legacy/：查上游，无更新且本地有 zip 则停止，否则打包；有更新则拉取 ko 替换，versionCode 同 tag （`v2.3.0-r18.2 → 230182`），并生成 `modules/update.json`、写 updateJson 进 module.prop
-- next/：仅打包本地内容（1.0 / versionCode 1）
