@@ -3,6 +3,9 @@ name: nightly
 on:
   push:
     branches: [master, main]
+  schedule:
+    # 每天 10:23 (北京时间) 检查上游更新
+    - cron: '23 2 * * *'
   workflow_dispatch:
 
 permissions:
@@ -14,12 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # legacy: 同步上游, 产物与 update.json 写入 modules/ (updateJson 指向仓库 raw 地址)
+      # legacy: 同步上游 ko + susfs_insmod, 产物与 update.json / changelog.md 写入 modules/
+      # GH_TOKEN 用于提高 GitHub API 限额
       - name: Pack legacy
         shell: pwsh
         working-directory: legacy
         env:
-          SUSFS_UPDATE_JSON_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/modules/update.json
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SUSFS_UPDATE_JSON_URL: https://cdn.jsdelivr.net/gh/${{ github.repository }}@${{ github.ref_name }}/modules/update.json
           SUSFS_ZIP_URL_BASE: https://github.com/${{ github.repository }}/releases/download/nightly/
         run: ./pack.ps1
 
@@ -29,7 +34,7 @@ jobs:
         working-directory: next
         run: ./pack.ps1
 
-      # modules/ (zip + update.json) 与 legacy/build/ (上游同步结果) 提交回仓库
+      # modules/ (zip + update.json + changelog.md) 与 legacy/build/ (上游同步结果) 提交回仓库
       # [skip ci] 防止本次提交再次触发工作流
       - name: Commit modules
         shell: pwsh
@@ -40,7 +45,14 @@ jobs:
           git diff --cached --quiet || git commit -m "Update modules [skip ci]"
           git push
 
-      # nightly release 只放两个模块 zip
+      # 提交后刷新 jsDelivr 缓存, 让管理器尽快读到新版本
+      - name: Purge jsDelivr cache
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://purge.jsdelivr.net/gh/${{ github.repository }}@${{ github.ref_name }}/modules/update.json" -UseBasicParsing | Out-Null
+          Invoke-WebRequest "https://purge.jsdelivr.net/gh/${{ github.repository }}@${{ github.ref_name }}/modules/changelog.md" -UseBasicParsing | Out-Null
+
+      # 固定 nightly 标签原地覆盖更新 zip 产物, 下载地址恒定
       - name: Upload nightly release
         uses: softprops/action-gh-release@v2
         with:

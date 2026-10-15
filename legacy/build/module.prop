@@ -4,4 +4,4 @@ version=v2.3.0-r18.3
 versionCode=230183
 author=linflame & 酷安@只是不够强
 description=Auto load susfs kernel module on boot (KernelSU via ksud, other root via bundled susfs_insmod). Upstream: inforcqb/susfs4ksu-lkm v2.3.0-r18.3
-updateJson=https://raw.githubusercontent.com/linflame/SusfsLkmLoader/main/modules/update.json
+updateJson=https://cdn.jsdelivr.net/gh/linflame/SusfsLkmLoader@main/modules/update.json
