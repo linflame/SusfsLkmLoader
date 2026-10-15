@@ -25,3 +25,5 @@ ko / 加载器来源：[susfs4ksu-lkm](https://gitee.com/inforcqb/susfs4ksu-lkm)
 - 便于用户更新
 - 日志：`/data/adb/susfs_lkm.log`
 
+鸣谢：酷安@只是不够强 · 上游 [susfs4ksu-lkm](https://gitee.com/inforcqb/susfs4ksu-lkm)
+
