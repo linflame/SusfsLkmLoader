@@ -15,8 +15,8 @@ $shared = Join-Path (Split-Path -Parent $root) 'shared'
 $headers = @{ 'User-Agent' = 'susfs-lkm-pack' }
 if ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $env:GH_TOKEN" }
 
-# update.json / changelog.md 经 jsDelivr 镜像读取 (raw 国内不可直连), zip 在 nightly release; 默认值可用环境变量覆盖 (CI 按实际分支注入)
-$UpdateJsonUrl = if ($env:SUSFS_UPDATE_JSON_URL) { $env:SUSFS_UPDATE_JSON_URL } else { 'https://cdn.jsdelivr.net/gh/linflame/SusfsLkmLoader@main/modules/update.json' }
+# update.json / changelog.md 经仓库 raw 地址读取, zip 在 nightly release; 默认值可用环境变量覆盖 (CI 按实际分支注入)
+$UpdateJsonUrl = if ($env:SUSFS_UPDATE_JSON_URL) { $env:SUSFS_UPDATE_JSON_URL } else { 'https://raw.githubusercontent.com/linflame/SusfsLkmLoader/main/modules/update.json' }
 $ChangelogUrl  = if ($env:SUSFS_CHANGELOG_URL)  { $env:SUSFS_CHANGELOG_URL }  elseif ($UpdateJsonUrl) { $UpdateJsonUrl -replace '[^/]+$', 'changelog.md' } else { '' }
 $ZipUrlBase    = if ($env:SUSFS_ZIP_URL_BASE)    { $env:SUSFS_ZIP_URL_BASE }    else { 'https://github.com/linflame/SusfsLkmLoader/releases/download/nightly/' }
 $ZipOut        = 'SUSFS_LKM_legacy.zip'
