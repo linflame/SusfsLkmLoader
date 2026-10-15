@@ -1,7 +1,7 @@
 # SUSFS LKM Loader
 
-开机自动加载 susfs 内核模块的 Root 模块，兼容 Magisk / KernelSU / APatch。
-ko / 加载器来源：[susfs4ksu-lkm](https://github.com/inforcqb/susfs4ksu-lkm)
+开机自动加载 susfs 内核模块的 Root 模块，兼容 Magisk / KernelSU / APatch。  
+ko / 加载器来源：[susfs4ksu-lkm](https://github.com/inforcqb/susfs4ksu-lkm)  
 检测更新频率：每天检查
 
 ## 双线
