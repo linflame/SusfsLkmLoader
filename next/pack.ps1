@@ -20,7 +20,7 @@ $lines = @(
     'version=1.0',
     'versionCode=1',
     'author=linflame & 酷安@只是不够强',
-    "description=Auto load susfs kernel module on boot. Current version = $tag. 加载状态读 /data/adb/susfs_lkm.log: OK loaded=😋加载成功, ERROR=😭加载失败"
+    "description=Auto load susfs kernel module on boot. Current version = $tag"
 )
 [IO.File]::WriteAllText((Join-Path $root 'build\module.prop'), ($lines -join "`n") + "`n")
 

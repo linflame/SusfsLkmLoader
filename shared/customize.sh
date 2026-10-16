@@ -92,6 +92,10 @@ done
 [ -f $MODPATH/upstream_version ] && set_perm $MODPATH/upstream_version 0 0 0644
 [ -d $MODPATH/webroot ] && set_perm_recursive $MODPATH/webroot 0 0 0755 0644
 
+# 保存描述基座, 加载状态由 load.sh 每次开机动态写入 module.prop
+sed -n 's/^description=//p' $MODPATH/module.prop > $MODPATH/description_base
+set_perm $MODPATH/description_base 0 0 0644
+
 # 纯加载器, 不做文件挂载
 touch $MODPATH/skip_mount
 

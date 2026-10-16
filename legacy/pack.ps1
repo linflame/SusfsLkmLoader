@@ -30,7 +30,7 @@ function Write-ModuleProp([string]$tag, [int]$code) {
         "version=$tag",
         "versionCode=$code",
         'author=linflame & 酷安@只是不够强',
-        "description=Auto load susfs kernel module on boot. Upstream: $repo $tag. 加载状态读 /data/adb/susfs_lkm.log: OK loaded=😋加载成功, ERROR=😭加载失败"
+        "description=Auto load susfs kernel module on boot. Upstream: $repo $tag"
     )
     if ($UpdateJsonUrl) { $lines += "updateJson=$UpdateJsonUrl" }
     # [IO.File] 相对路径按进程 cwd 解析, 必须用绝对路径

@@ -85,9 +85,17 @@ load_ko() { # $1=ko 路径; 统一用 susfs_insmod (显式暴露 /proc/susfs_* �
     "$MODDIR/susfs_insmod" "$1" expose_proc=1 2>&1
 }
 
-set_module_version() { # $1=上游tag: 更新 upstream_version 与描述, 模块 version/versionCode 不动
+# 把状态动态写进 module.prop 描述 (与 load.sh 同一约定: 描述基座 + 状态后缀)
+write_status() { # $1=状态文本 (😋加载成功 / 😭加载失败)
+    B=$(cat "$MODDIR/description_base" 2>/dev/null)
+    [ -n "$B" ] || return 0
+    B=$(printf '%s' "$B" | sed 's/[&|]/\\&/g')
+    sed -i "s|^description=.*|description=$B $1|" "$MODDIR/module.prop"
+}
+
+set_module_version() { # $1=上游tag: 更新 upstream_version 与描述基座, 模块 version/versionCode 不动
     echo "$1" > "$MODDIR/upstream_version"
-    sed -i "s/^description=.*/description=Auto load susfs kernel module on boot. Current version = $1/" "$MODDIR/module.prop" 2>/dev/null
+    echo "Auto load susfs kernel module on boot. Current version = $1" > "$MODDIR/description_base"
 }
 
 # 下载 release 附件 (带跨源重试), 成功返回 0
@@ -182,6 +190,7 @@ do_update() { # $1=首选源 gitee|github
 
     if is_loaded; then
         set_module_version "$TAG"
+        write_status "😋加载成功"
         echo "$(date '+%m-%d %H:%M:%S') OK hot-updated to $TAG ($KVAR, $SRC)" >> "$LOG"
         echo "OK=已更新到 $TAG 并完成热重载 ($KVAR)"
         rm -rf "$TMP"
@@ -200,7 +209,13 @@ do_update() { # $1=首选源 gitee|github
         esac
     done
     load_ko "$MODDIR/kos/susfs_guard_lkm-$KVAR.ko" >/dev/null 2>&1
-    is_loaded && echo "ERROR=更新失败, 已回滚到 $CUR 并恢复加载" || echo "ERROR=更新失败且回滚失败, 请重启手机"
+    if is_loaded; then
+        write_status "😋加载成功"
+        echo "ERROR=更新失败, 已回滚到 $CUR 并恢复加载"
+    else
+        write_status "😭加载失败"
+        echo "ERROR=更新失败且回滚失败, 请重启手机"
+    fi
     echo "$(date '+%m-%d %H:%M:%S') ERROR hot-update to $TAG failed, rolled back" >> "$LOG"
     rm -rf "$TMP"
     return 1
