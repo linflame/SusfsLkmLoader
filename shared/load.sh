@@ -8,7 +8,6 @@ MODDIR=${0%/*}
 [ "$(getprop ro.sys.safemode)" != 1 ] || exit 0
 
 LOG=/data/adb/susfs_lkm.log
-KSUD=/data/adb/ksu/bin/ksud
 STAGE=$1
 [ "$STAGE" = early ] && : > $LOG
 
@@ -36,14 +35,9 @@ fi
 KO=$MODDIR/kos/susfs_guard_lkm-$KVER.ko
 [ -f "$KO" ] || { echo "ERROR ko missing: $KO ($STAGE)" >> $LOG; exit 0; }
 
-# KernelSU 优先用 ksud, 失败回退模块内置 susfs_insmod (显式暴露 /proc/susfs_* 控制节点)
-OUT=""
-if [ -x "$KSUD" ]; then
-    OUT=$("$KSUD" insmod "$KO" 2>&1)
-fi
-if ! is_loaded && [ -x "$MODDIR/susfs_insmod" ]; then
-    OUT=$("$MODDIR/susfs_insmod" "$KO" expose_proc=1 2>&1)
-fi
+# 统一用上游自带的 susfs_insmod (所有管理器一套逻辑), 显式暴露 /proc/susfs_* 控制节点
+[ -x "$MODDIR/susfs_insmod" ] || { echo "ERROR susfs_insmod missing ($STAGE)" >> $LOG; exit 0; }
+OUT=$("$MODDIR/susfs_insmod" "$KO" expose_proc=1 2>&1)
 
 if is_loaded || echo "$OUT" | grep -qi 'file exists'; then
     echo "OK loaded ($KVER, $STAGE)" >> $LOG

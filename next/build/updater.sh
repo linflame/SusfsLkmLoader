@@ -5,7 +5,6 @@
 REPO="inforcqb/susfs4ksu-lkm"
 UA="susfs-lkm-updater"
 [ -z "$MODDIR" ] && MODDIR=${0%/*}
-KSUD=/data/adb/ksu/bin/ksud
 LOG=/data/adb/susfs_lkm.log
 
 # ---------- 下载工具探测: curl -> wget -> busybox wget ----------
@@ -78,17 +77,12 @@ is_loaded() {
 }
 
 unload_ko() {
-    [ -x "$KSUD" ] && "$KSUD" rmmod susfs_guard_lkm 2>/dev/null
     rmmod susfs_guard_lkm 2>/dev/null
     sleep 1
 }
 
-load_ko() { # $1=ko 路径; ksud 失败回退 susfs_insmod (显式暴露 /proc/susfs_* 控制节点)
-    if [ -x "$KSUD" ]; then
-        "$KSUD" insmod "$1" 2>&1
-    fi
-    is_loaded && return 0
-    [ -x "$MODDIR/susfs_insmod" ] && "$MODDIR/susfs_insmod" "$1" expose_proc=1 2>&1
+load_ko() { # $1=ko 路径; 统一用 susfs_insmod (显式暴露 /proc/susfs_* 控制节点)
+    "$MODDIR/susfs_insmod" "$1" expose_proc=1 2>&1
 }
 
 set_module_version() { # $1=上游tag: 更新 upstream_version 与描述, 模块 version/versionCode 不动
