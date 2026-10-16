@@ -70,6 +70,7 @@ release_url() { # $1=source $2=tag $3=filename
 # ---------- 加载状态 ----------
 is_loaded() {
     grep -q '^susfs_guard_lkm ' /proc/modules 2>/dev/null && return 0
+    [ -d /sys/module/susfs_guard_lkm ] && return 0
     for n in /proc/susfs_path /proc/susfs_kstat /proc/susfs_hide_modules /proc/susfs_enable_log; do
         [ -e "$n" ] && return 0
     done
@@ -82,12 +83,12 @@ unload_ko() {
     sleep 1
 }
 
-load_ko() {
+load_ko() { # $1=ko 路径; ksud 失败回退 susfs_insmod (显式暴露 /proc/susfs_* 控制节点)
     if [ -x "$KSUD" ]; then
-        "$KSUD" insmod "$MODDIR/susfs_guard_lkm.ko" 2>&1
-    else
-        "$MODDIR/susfs_insmod" "$MODDIR/susfs_guard_lkm.ko" 2>&1
+        "$KSUD" insmod "$1" 2>&1
     fi
+    is_loaded && return 0
+    [ -x "$MODDIR/susfs_insmod" ] && "$MODDIR/susfs_insmod" "$1" expose_proc=1 2>&1
 }
 
 set_module_version() { # $1=上游tag: 更新 upstream_version 与描述, 模块 version/versionCode 不动
@@ -122,16 +123,20 @@ do_update() { # $1=首选源 gitee|github
     echo "INFO=下载工具: ${CURL:-$WGET}"
 
     CUR=$(cat "$MODDIR/upstream_version" 2>/dev/null | tr -d '\r')
-    KVAR=$(cat "$MODDIR/kernel_version" 2>/dev/null | tr -d '\r')
-    [ -z "$KVAR" ] && { echo "ERROR=缺少 kernel_version 记录, 无法确定 ko 变体"; return 1; }
-    echo "INFO=安装时选择的内核变体: $KVAR"
 
-    # 对账: 运行内核与安装选择不一致时提示 (换内核刷机场景), 仍按安装选择更新
-    KV=${KVAR##*-}
-    case "$(uname -r)" in
-        "$KV".* | "$KV"-*) ;;
-        *) echo "INFO=警告: 当前内核 $(uname -r) 与 $KVAR 不一致, 仍按 $KVAR 更新" ;;
-    esac
+    # 内核变体: kernel_version 为固定模式 (只更新该变体), 否则自动匹配当前内核 (全量更新所有变体)
+    KVAR=$(cat "$MODDIR/kernel_version" 2>/dev/null | tr -d '\r')
+    if [ -n "$KVAR" ]; then
+        echo "INFO=固定内核变体: $KVAR"
+        UPKMIS="$KVAR"
+    else
+        REL=$(cat /proc/sys/kernel/osrelease)
+        . "$MODDIR/kmi.sh"
+        KVAR=$(select_kmi "$REL" "$MODDIR")
+        [ -z "$KVAR" ] && { echo "ERROR=当前内核 $REL 无匹配 ko"; return 1; }
+        echo "INFO=自动匹配内核变体: $KVAR (更新全部变体)"
+        UPKMIS=$(cat "$MODDIR/kmis")
+    fi
 
     [ "$1" = "github" ] && ORDER="github gitee" || ORDER="gitee github"
 
@@ -148,15 +153,17 @@ do_update() { # $1=首选源 gitee|github
     [ "$TAG" = "$CUR" ] && { echo "uptodate"; return 0; }
 
     TMP="$MODDIR/.update_tmp"
-    rm -rf "$TMP"; mkdir -p "$TMP"
-    KONAME="susfs_guard_lkm-$KVAR.ko"
+    rm -rf "$TMP"; mkdir -p "$TMP/old"
 
-    echo "INFO=下载 $KONAME"
-    if ! fetch_asset "$ORDER" "$TAG" "$KONAME" "$TMP/$KONAME" \
-       || [ $(wc -c < "$TMP/$KONAME" | tr -d ' ') -lt 10000 ]; then
-        echo "ERROR=$KONAME 下载失败 (上游可能未提供 $KVAR 内核的 ko)"
-        rm -rf "$TMP"; return 1
-    fi
+    for k in $UPKMIS; do
+        KONAME="susfs_guard_lkm-$k.ko"
+        echo "INFO=下载 $KONAME"
+        if ! fetch_asset "$ORDER" "$TAG" "$KONAME" "$TMP/$KONAME" \
+           || [ $(wc -c < "$TMP/$KONAME" | tr -d ' ') -lt 10000 ]; then
+            echo "ERROR=$KONAME 下载失败 (上游可能未提供该内核的 ko)"
+            rm -rf "$TMP"; return 1
+        fi
+    done
     echo "INFO=下载 susfs_insmod"
     if ! fetch_asset "$ORDER" "$TAG" susfs_insmod "$TMP/susfs_insmod" \
        || [ $(wc -c < "$TMP/susfs_insmod" | tr -d ' ') -lt 10000 ]; then
@@ -165,14 +172,19 @@ do_update() { # $1=首选源 gitee|github
     fi
 
     # 热重载: 备份 -> 卸载 -> 换文件 -> 加载
-    cp -f "$MODDIR/susfs_guard_lkm.ko" "$TMP/old.ko" 2>/dev/null
-    cp -f "$MODDIR/susfs_insmod" "$TMP/old.susfs_insmod" 2>/dev/null
+    for k in $UPKMIS; do
+        cp -f "$MODDIR/kos/susfs_guard_lkm-$k.ko" "$TMP/old/" 2>/dev/null
+    done
+    cp -f "$MODDIR/susfs_insmod" "$TMP/old/susfs_insmod" 2>/dev/null
     echo "INFO=热重载 susfs_guard_lkm ($KVAR)"
     unload_ko
     is_loaded && echo "INFO=旧模块未能卸载, 文件已替换, 重启后生效"
-    mv -f "$TMP/$KONAME" "$MODDIR/susfs_guard_lkm.ko"; chmod 644 "$MODDIR/susfs_guard_lkm.ko"
+    for k in $UPKMIS; do
+        mv -f "$TMP/susfs_guard_lkm-$k.ko" "$MODDIR/kos/susfs_guard_lkm-$k.ko"
+        chmod 644 "$MODDIR/kos/susfs_guard_lkm-$k.ko"
+    done
     mv -f "$TMP/susfs_insmod" "$MODDIR/susfs_insmod"; chmod 755 "$MODDIR/susfs_insmod"
-    is_loaded || OUT=$(load_ko 2>&1)
+    is_loaded || OUT=$(load_ko "$MODDIR/kos/susfs_guard_lkm-$KVAR.ko" 2>&1)
 
     if is_loaded; then
         set_module_version "$TAG"
@@ -185,9 +197,15 @@ do_update() { # $1=首选源 gitee|github
     # 加载失败: 回滚旧文件并尝试恢复
     echo "INFO=新 ko 加载失败: $OUT"
     echo "INFO=回滚到旧版本 $CUR"
-    [ -f "$TMP/old.ko" ] && { mv -f "$TMP/old.ko" "$MODDIR/susfs_guard_lkm.ko"; chmod 644 "$MODDIR/susfs_guard_lkm.ko"; }
-    [ -f "$TMP/old.susfs_insmod" ] && { mv -f "$TMP/old.susfs_insmod" "$MODDIR/susfs_insmod"; chmod 755 "$MODDIR/susfs_insmod"; }
-    load_ko >/dev/null 2>&1
+    for f in "$TMP/old"/*; do
+        [ -f "$f" ] || continue
+        b=${f##*/}
+        case "$b" in
+            susfs_insmod) mv -f "$f" "$MODDIR/susfs_insmod"; chmod 755 "$MODDIR/susfs_insmod" ;;
+            *.ko) mv -f "$f" "$MODDIR/kos/$b"; chmod 644 "$MODDIR/kos/$b" ;;
+        esac
+    done
+    load_ko "$MODDIR/kos/susfs_guard_lkm-$KVAR.ko" >/dev/null 2>&1
     is_loaded && echo "ERROR=更新失败, 已回滚到 $CUR 并恢复加载" || echo "ERROR=更新失败且回滚失败, 请重启手机"
     echo "$(date '+%m-%d %H:%M:%S') ERROR hot-update to $TAG failed, rolled back" >> "$LOG"
     rm -rf "$TMP"

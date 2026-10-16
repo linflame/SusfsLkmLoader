@@ -149,7 +149,7 @@ function Pack-Module([string]$out, [string[]]$files) {
     return $koCount
 }
 
-$packFiles = @('customize.sh', 'module.prop', 'post-fs-data.sh', 'service.sh', 'uninstall.sh', 'susfs_insmod', 'kos')
+$packFiles = @('customize.sh', 'module.prop', 'post-fs-data.sh', 'service.sh', 'uninstall.sh', 'kmi.sh', 'load.sh', 'susfs_insmod', 'kos')
 
 Write-Host "[1/3] Querying latest release of $repo (首选 gitee) ..."
 $rel = $null

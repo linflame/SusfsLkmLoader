@@ -26,7 +26,7 @@ $lines = @(
 
 # 拼接 shared/ (公共) + build/ (线专有) 到临时目录后打包
 $files = @('customize.sh', 'module.prop', 'post-fs-data.sh', 'service.sh', 'uninstall.sh',
-           'action.sh', 'updater.sh', 'webui.sh', 'susfs_insmod', 'upstream_version', 'kos', 'webroot')
+           'action.sh', 'updater.sh', 'webui.sh', 'kmi.sh', 'load.sh', 'susfs_insmod', 'upstream_version', 'kos', 'webroot')
 $stage = Join-Path $root '.pack_tmp'
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage | Out-Null

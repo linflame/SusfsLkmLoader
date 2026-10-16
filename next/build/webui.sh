@@ -8,6 +8,10 @@ case "$1" in
         V=$(sed -n 's/^version=//p' "$MODDIR/module.prop" | head -n 1 | tr -d '\r')
         U=$(cat "$MODDIR/upstream_version" 2>/dev/null | tr -d '\r')
         K=$(cat "$MODDIR/kernel_version" 2>/dev/null | tr -d '\r')
+        if [ -z "$K" ]; then
+            . "$MODDIR/kmi.sh"
+            K="auto ($(select_kmi "$(cat /proc/sys/kernel/osrelease)" "$MODDIR"))"
+        fi
         L=0; is_loaded && L=1
         S=$(cat "$MODDIR/update_source" 2>/dev/null | tr -d '\r')
         case "$S" in gitee|github) ;; *) S="gitee" ;; esac
