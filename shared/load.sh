@@ -32,9 +32,9 @@ if [ -z "$KVER" ]; then
     . "$MODDIR/kmi.sh"
     KVER=$(select_kmi "$REL" "$MODDIR")
 fi
-[ -n "$KVER" ] || { echo "$(date '+%m-%d %H:%M:%S') ERROR no ko matches kernel: $REL ($STAGE)" >> $LOG; exit 0; }
+[ -n "$KVER" ] || { echo "ERROR no ko matches kernel: $REL ($STAGE)" >> $LOG; exit 0; }
 KO=$MODDIR/kos/susfs_guard_lkm-$KVER.ko
-[ -f "$KO" ] || { echo "$(date '+%m-%d %H:%M:%S') ERROR ko missing: $KO ($STAGE)" >> $LOG; exit 0; }
+[ -f "$KO" ] || { echo "ERROR ko missing: $KO ($STAGE)" >> $LOG; exit 0; }
 
 # KernelSU 优先用 ksud, 失败回退模块内置 susfs_insmod (显式暴露 /proc/susfs_* 控制节点)
 OUT=""
@@ -46,7 +46,7 @@ if ! is_loaded && [ -x "$MODDIR/susfs_insmod" ]; then
 fi
 
 if is_loaded || echo "$OUT" | grep -qi 'file exists'; then
-    echo "$(date '+%m-%d %H:%M:%S') OK loaded ($KVER, $STAGE)" >> $LOG
+    echo "OK loaded ($KVER, $STAGE)" >> $LOG
 else
-    echo "$(date '+%m-%d %H:%M:%S') ERROR load failed ($KVER, $STAGE): $OUT" >> $LOG
+    echo "ERROR load failed ($KVER, $STAGE): $OUT" >> $LOG
 fi
