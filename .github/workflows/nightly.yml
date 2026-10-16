@@ -2,10 +2,9 @@ name: nightly
 
 on:
   push:
-    branches: [master, main]
+    branches: main
   schedule:
-    # 北京时间 00:12 / 06:12 / 12:12 / 18:12 (UTC 16/22/04/10 点), 每天四次; 避开整点减少排队延迟
-    - cron: '12 4,10,16,22 * * *'
+    - cron: '13 4,10,16,22 * * *'
   workflow_dispatch:
 
 permissions:
