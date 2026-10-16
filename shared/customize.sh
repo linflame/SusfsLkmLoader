@@ -1,29 +1,22 @@
 #!/system/bin/sh
-# SUSFS LKM Loader - 安装: 保留全部 ko, 默认每次开机按内核自动匹配, 音量键可固定版本
+# SUSFS LKM Loader - 安装: 选语言 -> 自动识别/固定版本 -> 保留全部 ko, 开机按内核匹配
 # 兼容 Magisk / KernelSU / SukiSU / APatch
 SKIPUNZIP=0
 TIMEOUT=20
 
-ui_print "- SUSFS LKM Loader installer started"
-
-# ---------- 内核清单 = kos/ 目录内容 ----------
-KOLIST=""
-for f in $MODPATH/kos/susfs_guard_lkm-*.ko; do
-  [ -f "$f" ] && { b=${f##*susfs_guard_lkm-}; KOLIST="$KOLIST ${b%.ko}"; }
-done
-[ -z "$KOLIST" ] && abort "! 模块包内未找到 ko 文件"
-
-# 生成 kmis 清单并按 osrelease 自动识别 (与开机加载共用 kmi.sh 同一套逻辑)
-printf '%s\n' $KOLIST > $MODPATH/kmis
-REL=$(cat /proc/sys/kernel/osrelease)
-. $MODPATH/kmi.sh
-DETECTED=$(select_kmi "$REL" "$MODPATH")
-
 # ---------- 音量键: 0=音量+ 1=音量- 2=超时 ----------
+# getevent -lc 1 输出如 "EV_KEY KEY_VOLUMEDOWN DOWN"; 只认按下 (DOWN) 忽略释放 (UP),
+# 否则残留的释放事件会被下次 keycheck 读到, 一次按键跳两项
 keycheck() {
   TMPF=$TMPDIR/.key_evt
   rm -f $TMPF
-  ( getevent -qlc 1 2>/dev/null | grep -m1 -E 'KEY_VOLUME(UP|DOWN)' > $TMPF ) &
+  ( while true; do
+      E=$(getevent -lc 1 2>/dev/null)
+      case "$E" in
+        *KEY_VOLUMEUP*DOWN*)   echo up > $TMPF;   break ;;
+        *KEY_VOLUMEDOWN*DOWN*) echo down > $TMPF; break ;;
+      esac
+    done ) &
   GPID=$!
   SECS=0
   while [ $SECS -lt $TIMEOUT ]; do
@@ -32,48 +25,78 @@ keycheck() {
     SECS=$((SECS + 1))
   done
   kill $GPID 2>/dev/null
-  grep -q 'KEY_VOLUMEUP' $TMPF 2>/dev/null && return 0
-  grep -q 'KEY_VOLUMEDOWN' $TMPF 2>/dev/null && return 1
+  grep -q up $TMPF 2>/dev/null && return 0
+  grep -q down $TMPF 2>/dev/null && return 1
   return 2
 }
 
-# ---------- 菜单: 第一项为自动匹配 (推荐), 其后各固定版本 (识别结果排前) ----------
+# 双语输出: say "中文" "English" (ZH=1 中文, ZH=0 English)
+ZH=1
+say() { [ $ZH = 1 ] && ui_print "$1" || ui_print "$2"; }
+
+ui_print "- SUSFS LKM Loader installer started"
+
+# ---------- Q1: 语言 ----------
 ui_print "--------------------------------"
-ui_print " 内核: $REL"
-[ -n "$DETECTED" ] && ui_print " 自动识别: $DETECTED"
-ui_print " 音量+ = 确认    音量- = 下一个"
-ui_print " ${TIMEOUT}s 无操作使用第一项"
+ui_print " 选择语言 / Select language"
+ui_print " 音量+ = 中文    音量- = English"
+ui_print " Vol+ = Chinese  Vol- = English"
+ui_print "--------------------------------"
+keycheck
+[ $? = 1 ] && ZH=0
+
+# ---------- 内核清单 = kos/ 目录内容 ----------
+KOLIST=""
+for f in $MODPATH/kos/susfs_guard_lkm-*.ko; do
+  [ -f "$f" ] && { b=${f##*susfs_guard_lkm-}; KOLIST="$KOLIST ${b%.ko}"; }
+done
+[ -z "$KOLIST" ] && abort "! 模块包内未找到 ko 文件 / no ko files in package"
+
+# 生成 kmis 清单并按 osrelease 自动识别 (与开机加载共用 kmi.sh 同一套逻辑)
+printf '%s\n' $KOLIST > $MODPATH/kmis
+REL=$(cat /proc/sys/kernel/osrelease)
+. $MODPATH/kmi.sh
+DETECTED=$(select_kmi "$REL" "$MODPATH")
+
+ui_print "--------------------------------"
+say " 内核: $REL" " Kernel: $REL"
+[ -n "$DETECTED" ] && say " 自动识别: $DETECTED" " Detected: $DETECTED"
 ui_print "--------------------------------"
 
-ORDER="auto"
-REST=""
-for k in $KOLIST; do
-  if [ "$k" = "$DETECTED" ]; then ORDER="$ORDER $k"; else REST="$REST $k"; fi
-done
-ORDER="$ORDER$REST"
+# ---------- Q2: 自动识别 or 固定版本 ----------
+say "每次开机自动识别内核版本?" "Auto-detect kernel version on every boot?"
+say "音量+ = 是, 自动识别 (推荐, 换内核无需重装)" "Vol+ = Yes, auto (recommended, no reinstall after OTA)"
+say "音量- = 否, 固定版本安装" "Vol- = No, use a fixed version"
+say "${TIMEOUT}s 无操作默认自动识别" "Timeout ${TIMEOUT}s defaults to auto"
+keycheck; R=$?
 
-SEL=""
-for k in $ORDER; do
-  if [ "$k" = auto ]; then
-    ui_print ">>> 自动匹配 (每次开机按内核选择, 换内核无需重装) ?"
-  else
-    ui_print ">>> 固定使用 $k ?"
-  fi
-  keycheck; R=$?
-  if [ $R -eq 0 ]; then
-    SEL=$k; break
-  elif [ $R -eq 2 ]; then
-    SEL=auto; ui_print " 超时, 使用自动匹配"; break
-  fi
-done
-[ -z "$SEL" ] && abort "! 未选择, 安装中止"
-
-if [ "$SEL" = auto ]; then
-  rm -f $MODPATH/kernel_version
-  ui_print "- 模式: 自动匹配"
-else
+if [ $R -eq 1 ]; then
+  # ---------- Q3: 固定版本列表 (识别结果排第一) ----------
+  ORDER=""
+  REST=""
+  for k in $KOLIST; do
+    if [ "$k" = "$DETECTED" ]; then ORDER="$k"; else REST="$REST $k"; fi
+  done
+  ORDER="$ORDER$REST"
+  SEL=""
+  for k in $ORDER; do
+    say ">>> 固定使用 $k ?" ">>> Use fixed $k ?"
+    say "    音量+ = 确认    音量- = 下一个" "    Vol+ = confirm  Vol- = next"
+    keycheck; R=$?
+    if [ $R -eq 0 ]; then
+      SEL=$k; break
+    elif [ $R -eq 2 ]; then
+      [ -n "$DETECTED" ] && { SEL=$DETECTED; say " 超时, 使用识别结果: $SEL" " Timeout, use detected: $SEL"; }
+      break
+    fi
+  done
+  [ -z "$SEL" ] && { say "! 未选择版本, 安装中止" "! No version selected, aborting"; abort "! install aborted"; }
   echo "$SEL" > $MODPATH/kernel_version
-  ui_print "- 模式: 固定 $SEL"
+  say "- 模式: 固定版本 $SEL" "- Mode: fixed $SEL"
+else
+  [ $R -eq 2 ] && say " 超时, 默认自动识别" " Timeout, default: auto"
+  rm -f $MODPATH/kernel_version
+  say "- 模式: 自动识别 (每次开机按内核匹配)" "- Mode: auto-detect (match kernel on every boot)"
 fi
 
 # ---------- 校验与权限 (next 专有文件按存在性处理, 两线共用此脚本) ----------
@@ -105,7 +128,8 @@ PFD=/data/adb/post-fs-data.d
 HOOK=$PFD/susfs_guard_lkm.sh
 mkdir -p $PFD
 if [ -f "$HOOK" ] && ! grep -q 'SUSFS_LKM' "$HOOK"; then
-  ui_print "! $HOOK 已被其他模块占用, 跳过提前加载注册 (模块阶段仍会加载)"
+  say "! $HOOK 已被其他模块占用, 跳过提前加载注册 (模块阶段仍会加载)" \
+      "! $HOOK is used by another module, skip early-load hook (module stage still loads)"
 else
   cat > $HOOK <<'EOF'
 #!/system/bin/sh
@@ -115,7 +139,7 @@ MODDIR=/data/adb/modules/SUSFS_LKM
 exit 0
 EOF
   chmod 755 $HOOK
-  ui_print "- 已注册公用提前加载 (post-fs-data.d)"
+  say "- 已注册公用提前加载 (post-fs-data.d)" "- Early-load hook registered (post-fs-data.d)"
 fi
 
-ui_print "- 完成! 重启后自动加载"
+say "- 完成! 重启后自动加载" "- Done! Will load on reboot"
