@@ -51,6 +51,7 @@
   button.act:disabled { opacity: .45; cursor: not-allowed; }
   #btnCheck { background: var(--card); color: var(--text); border: 1px solid var(--border); }
   #btnUpdate { background: var(--accent); color: #fff; }
+  #btnRepo { background: var(--card); color: var(--accent); border: 1px solid var(--border); }
   pre#log {
     background: #0a0c10; border: 1px solid var(--border); border-radius: 10px;
     padding: 12px; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
@@ -97,6 +98,15 @@
   </div>
 
   <div class="card">
+    <dl class="grid">
+      <dt>项目地址</dt><dd>github.com/linflame/SusfsLkmLoader</dd>
+    </dl>
+    <div class="btns" style="margin-top:10px">
+      <button class="act" id="btnRepo">前往</button>
+    </div>
+  </div>
+
+  <div class="card">
     <div id="status-line">就绪</div>
     <pre id="log"></pre>
   </div>
@@ -104,6 +114,7 @@
 <script>
 (function () {
   var MODULE_DIRS = ['/data/adb/modules/SUSFS_LKM', '/data/adb/modules_update/SUSFS_LKM'];
+  var REPO_URL = 'https://github.com/linflame/SusfsLkmLoader';
   var state = { version: '', susfs: '', kernel: '', loaded: 0, source: 'gitee', latest: '', checked: false };
 
   function $(id) { return document.getElementById(id); }
@@ -294,10 +305,21 @@
     });
   }
 
+  // 经 am 调起系统浏览器; 无执行环境时退回 window.open
+  function openRepo() {
+    exec("am start -a android.intent.action.VIEW -d '" + REPO_URL + "'").then(function (r) {
+      if (r.errno !== 0) {
+        logLine('调起浏览器失败，尝试页面内打开', 'err');
+        window.open(REPO_URL, '_blank');
+      }
+    }).catch(function () { window.open(REPO_URL, '_blank'); });
+  }
+
   $('src-gitee').addEventListener('click', function () { selectSource('gitee'); });
   $('src-github').addEventListener('click', function () { selectSource('github'); });
   $('btnCheck').addEventListener('click', checkUpdate);
   $('btnUpdate').addEventListener('click', doUpdate);
+  $('btnRepo').addEventListener('click', openRepo);
 
   if (!window.ksu || typeof window.ksu.exec !== 'function') {
     setStatus('环境不支持');
