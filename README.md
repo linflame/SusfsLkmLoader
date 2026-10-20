@@ -17,7 +17,7 @@ ko / 加载器来源：[susfs4ksu-lkm](https://github.com/inforcqb/susfs4ksu-lkm
 
 - `shared/`：两线公共文件（kos/、susfs_insmod、upstream_version、安装与加载脚本）
 - `legacy/build/`、`next/build/`：各线专有文件（module.prop；next 另有 action/updater/webui/webroot）
-- `modules/`：打包产物与 update.json
+- `modules/`：打包产物与 update.json / changelog.md
 
 ## 特性
 

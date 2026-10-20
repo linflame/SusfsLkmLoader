@@ -85,7 +85,7 @@ load_ko() { # $1=ko 路径; 统一用 susfs_insmod (显式暴露 /proc/susfs_* �
     "$MODDIR/susfs_insmod" "$1" expose_proc=1 2>&1
 }
 
-# 把状态动态写进 module.prop 描述 (与 load.sh 同一约定: 描述基座 + 状态后缀)
+# 把状态动态写进 module.prop 描述 (与 load.sh 同一约定: 状态前缀 + 描述基座)
 write_status() { # $1=状态文本 (😋加载成功~ / 😭加载失败！)
     B=$(cat "$MODDIR/description_base" 2>/dev/null)
     [ -n "$B" ] || return 0
