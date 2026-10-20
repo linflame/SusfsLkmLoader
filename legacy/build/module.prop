@@ -3,5 +3,5 @@ name=SUSFS LKM Loader
 version=v2.3.0-r18.4
 versionCode=230184
 author=linflame & 酷安@只是不够强
-description=Auto load susfs kernel module on boot. Upstream: inforcqb/susfs4ksu-lkm v2.3.0-r18.4
+description=Auto load susfs kernel module on boot. Upstream: inforcqb/susfs4ksu-lkm v2.3.0-r18.4. 项目地址: https://github.com/linflame/SusfsLkmLoader
 updateJson=https://raw.githubusercontent.com/linflame/SusfsLkmLoader/main/modules/update.json
